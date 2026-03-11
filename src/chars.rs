@@ -5,6 +5,7 @@ use std::sync::OnceLock;
 /// On Windows (or when `RUSIZE_ASCII=1` is set), all Unicode box-drawing
 /// and emoji characters are replaced with pure ASCII equivalents so the
 /// output renders correctly in `cmd.exe` and legacy PowerShell.
+#[allow(dead_code)]
 pub struct Chars {
     // Tree connectors
     pub branch: &'static str,

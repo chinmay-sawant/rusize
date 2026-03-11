@@ -22,6 +22,8 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let sys = System::new_all();
     let c = chars::get();
+    let _fullscreen = display::enter_fullscreen()?;
+    let min_bytes = (args.min_size * 1024.0 * 1024.0) as u64;
 
     // -- Banner & system info -----------------------------------------------
     display::banner(c);
@@ -48,6 +50,7 @@ fn main() -> anyhow::Result<()> {
     );
 
     // -- Scan each target ---------------------------------------------------
+    let mut scan_targets = Vec::new();
     for root in &targets {
         display::scan_header(&root.display().to_string(), c);
 
@@ -100,16 +103,15 @@ fn main() -> anyhow::Result<()> {
             scanner::sort_recursive(&mut nodes);
         }
 
-        let min_bytes = (args.min_size * 1024.0 * 1024.0) as u64;
-
-        // -- Output ---------------------------------------------------------
-        display::tree(&nodes, min_bytes, args.sort, c);
-        display::total(&nodes, c);
-        display::bar_chart(&nodes, min_bytes, c);
+        let total_size = nodes.iter().map(|node| node.size).sum();
+        scan_targets.push(display::ScanTarget {
+            root_display: root.display().to_string(),
+            nodes,
+            total_size,
+        });
     }
 
-    display::done(c);
-    display::wait_for_exit();
+    display::run_app(scan_targets, min_bytes, args.sort, args.depth, c)?;
 
     Ok(())
 }

@@ -8,6 +8,9 @@ authors = ["Chinmay Sawant"]
 [dependencies]
 # CLI Parsing
 clap = { version = "4.5", features = ["derive"] }
+# Fullscreen terminal UI
+ratatui = "0.29"
+crossterm = "0.28"
 # Parallelism
 rayon = "1.10"
 # System Information (Disks, OS, CPU)

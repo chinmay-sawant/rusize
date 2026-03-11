@@ -19,8 +19,15 @@ an ASCII bar chart.\n\
 On Windows, it works correctly in cmd.exe, PowerShell, and Windows Terminal."
 )]
 pub struct Args {
+    #[arg(value_name = "PATH")]
     pub path: Option<String>,
+
+    #[arg(short = 'm', long = "min-size", default_value_t = 1.0, value_name = "MB")]
     pub min_size: f64,
+
+    #[arg(short, long, default_value_t = false)]
     pub sort: bool,
+
+    #[arg(short, long, default_value_t = 1, value_name = "LEVELS")]
     pub depth: usize,
 }

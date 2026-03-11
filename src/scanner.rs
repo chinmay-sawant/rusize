@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// A node in the scanned directory tree.
 ///
@@ -8,6 +8,7 @@ use std::path::Path;
 /// `children` are only populated up to the requested `max_depth`.
 pub struct DirNode {
     pub name: String,
+    pub path: PathBuf,
     pub size: u64,
     pub children: Vec<DirNode>,
 }
@@ -30,6 +31,7 @@ pub fn scan_tree(path: &Path, current_depth: usize, max_depth: usize) -> DirNode
 
     let mut node = DirNode {
         name,
+        path: path.to_path_buf(),
         size: 0,
         children: Vec::new(),
     };
