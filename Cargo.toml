@@ -1,0 +1,29 @@
+[package]
+name = "rusize"
+version = "0.1.0"
+edition = "2021"
+description = "High-speed multi-threaded disk scanner"
+authors = ["Chinmay Sawant"]
+
+[dependencies]
+# CLI Parsing
+clap = { version = "4.5", features = ["derive"] }
+# Parallelism
+rayon = "1.10"
+# System Information (Disks, OS, CPU)
+sysinfo = "0.30"
+# Error handling
+anyhow = "1.0"
+# Terminal colors
+colored = "2.1"
+# For checking Admin/Sudo privileges
+is-root = "0.1"
+# Progress bar
+indicatif = "0.17"
+# Enable ANSI escape codes on Windows cmd.exe / PowerShell
+enable-ansi-support = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
