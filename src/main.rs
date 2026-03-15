@@ -27,6 +27,9 @@ pub struct Args {
 
     #[arg(short, long, value_name = "OUTPUT_PATH")]
     pub output: Option<String>,
+
+    #[arg(long, value_name = "TEXT_REPORT_PATH", help = "Open a generated text report in an interactive HTML GUI")]
+    pub gui: Option<String>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -34,6 +37,10 @@ fn main() -> anyhow::Result<()> {
     enable_ansi_support::enable_ansi_support().ok();
 
     let args = Args::parse();
+
+    if let Some(txt_path) = args.gui {
+        return rusize::services::gui::start(&txt_path);
+    }
     
     rusize::run(
         args.path,

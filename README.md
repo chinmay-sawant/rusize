@@ -1,6 +1,6 @@
 # rusize
 
-**rusize** is a blazing-fast, multi-threaded disk space analyzer written in Rust. 
+**rusize** is a blazing-fast, multi-threaded disk space analyzer written in Rust.
 It uses Rayon's work-stealing thread pool to scan directories in parallel, detects system disks automatically, and outputs results in customizable reporting formats (CSV, JSON, Text).
 
 ## Features
@@ -14,6 +14,7 @@ It uses Rayon's work-stealing thread pool to scan directories in parallel, detec
 ## Installation
 
 ### 🚀 Download Pre-built Binaries (Recommended)
+
 You can download the latest pre-built binaries for **Windows, Linux, and macOS** from the [GitHub Releases](https://github.com/chinmay-sawant/rusize/releases) page.
 
 1. Download the archive for your system.
@@ -21,6 +22,7 @@ You can download the latest pre-built binaries for **Windows, Linux, and macOS**
 3. Move it to a folder in your system `PATH` (e.g., `/usr/local/bin` on Linux/macOS or a custom folder on Windows).
 
 ### 🦀 Using Cargo
+
 If you have [Rust](https://www.rust-lang.org/) installed, you can install it directly from source:
 
 ```sh
@@ -29,6 +31,7 @@ cargo install --git https://github.com/chinmay-sawant/rusize
 ```
 
 ### 🛠️ Building from Source
+
 If you prefer to build it manually:
 
 ```sh
@@ -36,6 +39,7 @@ git clone https://github.com/chinmay-sawant/rusize
 cd rusize
 cargo build --release
 ```
+
 The executable will be available at `target/release/rusize`.
 
 ### Windows Build from Linux
@@ -75,18 +79,33 @@ rusize [OPTIONS] [PATH]
 ### Examples
 
 Scan the current directory, generating a CSV report (default):
+
 ```sh
 rusize .
 ```
 
+Scan the C: drive only, generating a text report:
+
+```sh
+rusize C:/ --format text
+```
+
 Scan a specific directory showing only folders larger than 50 MB, formatted as an ASCII tree:
+
 ```sh
 rusize --format text --min-size 50 /var/log
 ```
 
 Export scan output to a JSON file:
+
 ```sh
 rusize --format json . > output.json
+```
+
+View a text report in an interactive HTML GUI:
+
+```sh
+rusize --gui rusize_report.txt
 ```
 
 ## License
