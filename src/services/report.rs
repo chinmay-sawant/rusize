@@ -98,7 +98,7 @@ fn generate_text(nodes: &[DirNode], output_path: &str) -> anyhow::Result<()> {
 
             let formatted_size = format_size_gb(node.size);
 
-            writeln!(file, "{}{} {} ({})", indent, prefix, node.name, formatted_size)?;
+            writeln!(file, "{}{}{} ({})", indent, prefix, node.name, formatted_size)?;
 
             let new_indent = if depth == 0 {
                 indent.to_string()

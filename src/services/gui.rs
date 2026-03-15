@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{Read, Write, BufReader, BufRead};
 use std::net::{TcpListener, TcpStream};
-use std::path::{PathBuf, Path};
+use std::path::Path;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GuiNode {
@@ -12,15 +12,76 @@ pub struct GuiNode {
     pub children: Vec<GuiNode>,
 }
 
+fn parse_report_line(line: &str) -> Option<(usize, String, String)> {
+    let mut remaining = line;
+    let mut depth = 0;
+
+    loop {
+        if let Some(rest) = remaining.strip_prefix("│   ") {
+            depth += 1;
+            remaining = rest;
+            continue;
+        }
+
+        if let Some(rest) = remaining.strip_prefix("    ") {
+            depth += 1;
+            remaining = rest;
+            continue;
+        }
+
+        break;
+    }
+
+    if let Some(rest) = remaining.strip_prefix("├──").or_else(|| remaining.strip_prefix("└──")) {
+        depth += 1;
+        remaining = rest;
+    }
+
+    let remaining = remaining.trim_start();
+    if remaining.is_empty() {
+        return None;
+    }
+
+    if let Some((name, size_with_paren)) = remaining.rsplit_once(" (") {
+        if let Some(size) = size_with_paren.strip_suffix(')') {
+            return Some((depth, name.trim().to_string(), size.trim().to_string()));
+        }
+    }
+
+    Some((depth, remaining.to_string(), String::new()))
+}
+
+fn join_display_path(parent: &str, child: &str) -> String {
+    let parent = parent.trim();
+    let child = child.trim();
+
+    if parent.is_empty() {
+        return child.to_string();
+    }
+
+    if child.is_empty() {
+        return parent.to_string();
+    }
+
+    if parent.ends_with('/') || parent.ends_with('\\') {
+        return format!("{}{}", parent, child);
+    }
+
+    let separator = if parent.contains('\\') && !parent.contains('/') {
+        '\\'
+    } else {
+        '/'
+    };
+
+    format!("{}{}{}", parent, separator, child)
+}
+
 fn parse_text_report(file_path: &str) -> anyhow::Result<Vec<GuiNode>> {
     let file = File::open(file_path)?;
     let reader = BufReader::new(file);
 
-    let mut nodes_by_depth: Vec<Vec<GuiNode>> = Vec::new();
-    // Pre-allocate enough levels to handle decent depth to avoid out-of-bounds
-    for _ in 0..100 {
-        nodes_by_depth.push(Vec::new());
-    }
+    let mut roots = Vec::new();
+    let mut stack: Vec<(usize, GuiNode)> = Vec::new();
 
     for line_result in reader.lines() {
         let line = line_result?;
@@ -28,99 +89,107 @@ fn parse_text_report(file_path: &str) -> anyhow::Result<Vec<GuiNode>> {
             continue;
         }
 
-        let chars: Vec<char> = line.chars().collect();
-        let mut depth = 0;
-        let mut idx = 0;
-
-        while idx < chars.len() {
-            if chars.len() - idx >= 4 {
-                let chunk: String = chars[idx..idx + 4].iter().collect();
-                if chunk == "    " || chunk == "│   " {
-                    depth += 1;
-                    idx += 4;
-                    continue;
-                } else if chunk == "├── " || chunk == "└── " {
-                    depth += 1;
-                    idx += 4;
-                    break;
-                }
-            }
-            break;
-        }
-
-        if depth == 0 && chars.first() == Some(&' ') {
-            idx = 1;
-        }
-
-        let name_start = idx;
-        let mut size_str = String::new();
-        let mut name = String::new();
-
-        // Find the last " (" and ")"
-        if let Some(paren_start) = line.rfind(" (") {
-            if let Some(paren_end) = line.rfind(")") {
-                if paren_start < paren_end {
-                    // Because `chars` and byte indices don't mix directly and we just want to safely extract from `line`:
-                    // We can match using `name_start` in chars to byte index.
-                    let name_start_byte_idx = line.char_indices().nth(name_start).map(|(i, _)| i).unwrap_or(0);
-                    name = line[name_start_byte_idx..paren_start].to_string();
-                    size_str = line[paren_start + 2..paren_end].to_string();
-                }
-            }
-        }
-
-        if name.is_empty() {
-            name = line[idx..].to_string();
-        }
+        let Some((depth, name, size_str)) = parse_report_line(&line) else {
+            continue;
+        };
 
         let mut new_node = GuiNode {
             name: name.clone(),
-            path: "".to_string(), // We will reconstruct this next
-            size_str: size_str.clone(),
+            path: String::new(),
+            size_str,
             children: Vec::new(),
         };
 
         if depth == 0 {
-            nodes_by_depth[0].push(new_node);
+            new_node.path = name.clone();
         } else {
-            let parent_depth = depth - 1;
-            let parent_path = {
-                if let Some(parent) = nodes_by_depth[parent_depth].last() {
-                    if parent.path.is_empty() {
-                        parent.name.clone()
+            while let Some(&(top_depth, _)) = stack.last() {
+                if top_depth >= depth {
+                    let (_d, n) = stack.pop().unwrap();
+                    if let Some((_, parent)) = stack.last_mut() {
+                        parent.children.push(n);
                     } else {
-                        parent.path.clone()
+                        roots.push(n);
                     }
                 } else {
-                    String::new()
-                }
-            };
-            
-            if !parent_path.is_empty() {
-                let mut path_buf = PathBuf::from(parent_path);
-                path_buf.push(&name);
-                new_node.path = path_buf.to_string_lossy().to_string();
-                
-                if let Some(parent) = nodes_by_depth[parent_depth].last_mut() {
-                    parent.children.push(new_node.clone());
+                    break;
                 }
             }
-            nodes_by_depth[depth].push(new_node);
+
+            if let Some((_, parent)) = stack.last() {
+                new_node.path = join_display_path(&parent.path, &name);
+            } else {
+                new_node.path = name.clone();
+            }
+        }
+
+        stack.push((depth, new_node));
+    }
+
+    while let Some((_d, n)) = stack.pop() {
+        if let Some((_, parent)) = stack.last_mut() {
+            parent.children.push(n);
+        } else {
+            roots.push(n);
         }
     }
 
-    // Since we copied children, we only need to return the roots
-    let roots = nodes_by_depth[0].clone();
-    
-    // Fix root paths
-    let mut final_roots = roots;
-    for root in final_roots.iter_mut() {
-        if root.path.is_empty() {
-            root.path = root.name.clone();
-        }
+    Ok(roots)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{join_display_path, parse_text_report};
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn write_temp_report(contents: &str) -> String {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("rusize-gui-{unique}.txt"));
+        fs::write(&path, contents).unwrap();
+        path.to_string_lossy().to_string()
     }
 
-    Ok(final_roots)
+    #[test]
+    fn joins_windows_style_display_paths_without_extra_spaces() {
+        assert_eq!(join_display_path("C:/", "Windows"), "C:/Windows");
+        assert_eq!(join_display_path("C:\\", "Windows"), "C:\\Windows");
+        assert_eq!(join_display_path("/", "usr"), "/usr");
+    }
+
+    #[test]
+    fn parses_nested_text_report_structure() {
+        let report = concat!(
+            "C:/ (155.65 GB)\n",
+            "├── Windows (55.30 GB)\n",
+            "│   ├── WinSxS (20.18 GB)\n",
+            "│   │   ├── Temp (0.49 GB)\n",
+            "│   └── Installer (15.99 GB)\n",
+            "├── Users (49.21 GB)\n",
+            "│   └── acer (49.02 GB)\n",
+            "└── Program Files (28.11 GB)\n"
+        );
+        let path = write_temp_report(report);
+
+        let roots = parse_text_report(&path).unwrap();
+
+        fs::remove_file(&path).unwrap();
+
+        assert_eq!(roots.len(), 1);
+        let root = &roots[0];
+        assert_eq!(root.name, "C:/");
+        assert_eq!(root.children.len(), 3);
+        assert_eq!(root.children[0].name, "Windows");
+        assert_eq!(root.children[0].path, "C:/Windows");
+        assert_eq!(root.children[0].children.len(), 2);
+        assert_eq!(root.children[0].children[0].name, "WinSxS");
+        assert_eq!(root.children[0].children[0].path, "C:/Windows/WinSxS");
+        assert_eq!(root.children[0].children[0].children[0].path, "C:/Windows/WinSxS/Temp");
+        assert_eq!(root.children[1].children[0].path, "C:/Users/acer");
+    }
 }
 
 fn handle_connection(mut stream: TcpStream, html_template: &str, tree_json: &str) {
