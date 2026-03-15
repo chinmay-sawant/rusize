@@ -100,22 +100,22 @@ fn parse_text_report(file_path: &str) -> anyhow::Result<Vec<GuiNode>> {
             children: Vec::new(),
         };
 
+        while let Some(&(top_depth, _)) = stack.last() {
+            if top_depth >= depth {
+                let (_d, n) = stack.pop().unwrap();
+                if let Some((_, parent)) = stack.last_mut() {
+                    parent.children.push(n);
+                } else {
+                    roots.push(n);
+                }
+            } else {
+                break;
+            }
+        }
+
         if depth == 0 {
             new_node.path = name.clone();
         } else {
-            while let Some(&(top_depth, _)) = stack.last() {
-                if top_depth >= depth {
-                    let (_d, n) = stack.pop().unwrap();
-                    if let Some((_, parent)) = stack.last_mut() {
-                        parent.children.push(n);
-                    } else {
-                        roots.push(n);
-                    }
-                } else {
-                    break;
-                }
-            }
-
             if let Some((_, parent)) = stack.last() {
                 new_node.path = join_display_path(&parent.path, &name);
             } else {
@@ -189,6 +189,31 @@ mod tests {
         assert_eq!(root.children[0].children[0].path, "C:/Windows/WinSxS");
         assert_eq!(root.children[0].children[0].children[0].path, "C:/Windows/WinSxS/Temp");
         assert_eq!(root.children[1].children[0].path, "C:/Users/acer");
+    }
+
+    #[test]
+    fn parses_multiple_root_drives_from_one_report() {
+        let report = concat!(
+            "C:\\ (155.72 GB)\n",
+            "├── Windows (55.32 GB)\n",
+            "└── Users (49.26 GB)\n",
+            "D:\\ (513.68 GB)\n",
+            "├── SteamLibrary (179.16 GB)\n",
+            "└── Movies (47.19 GB)\n"
+        );
+        let path = write_temp_report(report);
+
+        let roots = parse_text_report(&path).unwrap();
+
+        fs::remove_file(&path).unwrap();
+
+        assert_eq!(roots.len(), 2);
+        assert_eq!(roots[0].name, "C:\\");
+        assert_eq!(roots[1].name, "D:\\");
+        assert_eq!(roots[0].children.len(), 2);
+        assert_eq!(roots[1].children.len(), 2);
+        assert_eq!(roots[1].children[0].path, "D:\\SteamLibrary");
+        assert_eq!(roots[1].children[1].path, "D:\\Movies");
     }
 }
 
