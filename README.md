@@ -87,8 +87,10 @@ rusize .
 Scan the C: drive only, generating a text report:
 
 ```sh
-rusize C:/ --format text
+rusize C:/ --format text --gui rusize_report.txt
 ```
+
+When `--gui` is combined with scan options like `PATH`, `--format`, `--min-size`, or `--depth`, `rusize` now performs a fresh scan first, writes a text report to the `--gui` path, and then opens that new report in the browser GUI.
 
 Scan a specific directory showing only folders larger than 50 MB, formatted as an ASCII tree:
 

@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::fs::File;
 use std::io::Write;
 
-#[derive(ValueEnum, Clone, Debug, Default)]
+#[derive(ValueEnum, Clone, Debug, Default, PartialEq, Eq)]
 pub enum ReportFormat {
     #[default]
     Csv,
