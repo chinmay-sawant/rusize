@@ -1,5 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::Sender;
+use std::thread;
 
 /// A node in the scanned directory tree.
 ///
@@ -10,6 +12,9 @@ pub struct DirNode {
     pub name: String,
     pub path: PathBuf,
     pub size: u64,
+    pub has_children: bool,
+    pub children_loaded: bool,
+    pub is_loading: bool,
     pub children: Vec<DirNode>,
 }
 
@@ -33,6 +38,9 @@ pub fn scan_tree(path: &Path, current_depth: usize, max_depth: usize) -> DirNode
         name,
         path: path.to_path_buf(),
         size: 0,
+        has_children: false,
+        children_loaded: false,
+        is_loading: false,
         children: Vec::new(),
     };
 
@@ -48,6 +56,7 @@ pub fn scan_tree(path: &Path, current_depth: usize, max_depth: usize) -> DirNode
         };
 
         if md.is_dir() {
+            node.has_children = true;
             if current_depth < max_depth {
                 let child = scan_tree(&entry.path(), current_depth + 1, max_depth);
                 node.size += child.size;
@@ -60,7 +69,53 @@ pub fn scan_tree(path: &Path, current_depth: usize, max_depth: usize) -> DirNode
         }
     }
 
+    node.children_loaded = !node.has_children || current_depth < max_depth;
+
     node
+}
+
+pub struct ScanResult {
+    pub target_idx: usize,
+    pub node_path: Vec<usize>,
+    pub children: Vec<DirNode>,
+}
+
+pub fn spawn_load_children(
+    target_idx: usize,
+    node_path: Vec<usize>,
+    dir_path: PathBuf,
+    tx: Sender<ScanResult>,
+) {
+    thread::spawn(move || {
+        let mut children = scan_direct_children(&dir_path);
+        sort_recursive(&mut children);
+        let _ = tx.send(ScanResult {
+            target_idx,
+            node_path,
+            children,
+        });
+    });
+}
+
+fn scan_direct_children(path: &Path) -> Vec<DirNode> {
+    let entries = match fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut children = Vec::new();
+    for entry in entries.flatten() {
+        let md = match entry.metadata() {
+            Ok(md) => md,
+            Err(_) => continue,
+        };
+
+        if md.is_dir() {
+            children.push(scan_tree(&entry.path(), 1, 1));
+        }
+    }
+
+    children
 }
 
 /// Calculate the total size of a directory recursively (no children tracked).

@@ -18,10 +18,11 @@ use ratatui::{
 };
 use std::collections::HashSet;
 use std::io;
+use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
 
 use crate::chars::Chars;
-use crate::scanner::DirNode;
+use crate::scanner::{self, DirNode};
 
 pub struct ScanTarget {
     pub root_display: String,
@@ -46,25 +47,27 @@ struct App {
     selected: usize,
     should_quit: bool,
     min_bytes: u64,
-    sort: bool,
-    depth: usize,
     pane_ratio: u16,
     drawer_scroll: usize,
     show_help: bool,
     status_message: String,
     resizing: bool,
     layout: LayoutCache,
+    tx: Sender<scanner::ScanResult>,
 }
 
+#[derive(Clone)]
 struct VisibleItem {
     key: String,
     title: String,
     depth: usize,
     expandable: bool,
     expanded: bool,
+    is_loading: bool,
     kind: ItemKind,
 }
 
+#[derive(Clone)]
 enum ItemKind {
     Target(usize),
     Node { target_idx: usize, node_path: Vec<usize> },
@@ -99,7 +102,7 @@ impl Drop for FullscreenGuard {
 }
 
 impl App {
-    fn new(targets: Vec<ScanTarget>, min_bytes: u64, sort: bool, depth: usize) -> Self {
+    fn new(targets: Vec<ScanTarget>, min_bytes: u64, tx: Sender<scanner::ScanResult>) -> Self {
         let root_count = targets.len();
         let expanded = targets
             .iter()
@@ -112,8 +115,6 @@ impl App {
             selected: 0,
             should_quit: false,
             min_bytes,
-            sort,
-            depth,
             pane_ratio: 38,
             drawer_scroll: 0,
             show_help: false,
@@ -123,6 +124,7 @@ impl App {
             ),
             resizing: false,
             layout: LayoutCache::default(),
+            tx,
         }
     }
 
@@ -142,6 +144,7 @@ impl App {
                 depth: 0,
                 expandable: !target.nodes.is_empty(),
                 expanded,
+                is_loading: false,
                 kind: ItemKind::Target(target_idx),
             });
 
@@ -175,8 +178,9 @@ impl App {
                 key,
                 title: node.name.clone(),
                 depth,
-                expandable: node.children.iter().any(|child| child.size >= self.min_bytes),
+                expandable: node.has_children,
                 expanded,
+                is_loading: node.is_loading,
                 kind: ItemKind::Node {
                     target_idx,
                     node_path: node_path.clone(),
@@ -212,7 +216,7 @@ impl App {
 
     fn toggle_current(&mut self) {
         let items = self.visible_items();
-        if let Some(item) = items.get(self.selected) {
+        if let Some(item) = items.get(self.selected).cloned() {
             if !item.expandable {
                 return;
             }
@@ -221,6 +225,7 @@ impl App {
                 self.expanded.remove(&item.key);
                 self.set_status(format!("Collapsed {}", item.title));
             } else {
+                self.ensure_item_loaded(&item.kind);
                 self.expanded.insert(item.key.clone());
                 self.set_status(format!("Expanded {}", item.title));
             }
@@ -229,8 +234,9 @@ impl App {
 
     fn expand_current(&mut self) {
         let items = self.visible_items();
-        if let Some(item) = items.get(self.selected) {
+        if let Some(item) = items.get(self.selected).cloned() {
             if item.expandable {
+                self.ensure_item_loaded(&item.kind);
                 let inserted = self.expanded.insert(item.key.clone());
                 if inserted {
                     self.set_status(format!("Expanded {}", item.title));
@@ -297,6 +303,7 @@ impl App {
             KeyCode::Char('-') | KeyCode::Char('_') | KeyCode::Char('[') => self.resize_panes(-3),
             _ => {}
         }
+        self.ensure_selected_loaded();
         self.ensure_selected_visible();
     }
 
@@ -352,6 +359,7 @@ impl App {
             }
             _ => {}
         }
+        self.ensure_selected_loaded();
         self.ensure_selected_visible();
     }
 
@@ -378,6 +386,61 @@ impl App {
         } else if self.selected >= self.drawer_scroll + visible_rows {
             self.drawer_scroll = self.selected + 1 - visible_rows;
         }
+    }
+
+    fn ensure_selected_loaded(&mut self) {
+        let item = self.visible_items().get(self.selected).cloned();
+        if let Some(item) = item {
+            self.ensure_item_loaded(&item.kind);
+        }
+    }
+
+    fn ensure_item_loaded(&mut self, kind: &ItemKind) {
+        if let ItemKind::Node {
+            target_idx,
+            node_path,
+        } = kind
+        {
+            let (needs_load, node_name, node_path_buf) = {
+                let node = self.node_at_mut(*target_idx, node_path);
+                let needs_load = !node.children_loaded && !node.is_loading;
+                if needs_load {
+                    node.is_loading = true;
+                }
+                (needs_load, node.name.clone(), node.path.clone())
+            };
+
+            if needs_load {
+                self.set_status(format!("Loading {}...", node_name));
+                scanner::spawn_load_children(
+                    *target_idx,
+                    node_path.clone(),
+                    node_path_buf,
+                    self.tx.clone(),
+                );
+            }
+        }
+    }
+
+    fn handle_scan_result(&mut self, result: scanner::ScanResult) {
+        let (key, has_children, node_name) = {
+            let node = self.node_at_mut(result.target_idx, &result.node_path);
+            node.children = result.children;
+            node.has_children = !node.children.is_empty();
+            node.children_loaded = true;
+            node.is_loading = false;
+            
+            (node_key(node), node.has_children, node.name.clone())
+        };
+        
+        // Only expand the loaded folder if it was already marked as expanded
+        // OR it was in the process of expanding
+        if self.expanded.contains(&key) && !has_children {
+            self.expanded.remove(&key);
+        }
+        
+        // Don't modify selection to stay friendly
+        self.set_status(format!("Loaded {}", node_name));
     }
 
     fn drawer_index_at_row(&self, row: u16) -> Option<usize> {
@@ -480,8 +543,13 @@ impl App {
         node
     }
 
+    fn node_at_mut<'a>(&'a mut self, target_idx: usize, node_path: &[usize]) -> &'a mut DirNode {
+        node_at_path_mut(&mut self.targets[target_idx].nodes, node_path)
+    }
+
     fn render(&mut self, frame: &mut Frame, c: &Chars) {
         self.clamp_selection();
+        self.ensure_selected_loaded();
         let items = self.visible_items();
         let selected_item = items.get(self.selected);
         let details = selected_item.map(|item| self.detail_data(item));
@@ -556,7 +624,13 @@ impl App {
             .take(visible_rows)
             .map(|(index, item)| {
                 let indent = "  ".repeat(item.depth);
-                let marker = drawer_marker(item.expandable, item.expanded, c);
+                
+                let marker = if item.is_loading {
+                    "[~]".to_string()
+                } else {
+                    drawer_marker(item.expandable, item.expanded, c).to_string()
+                };
+
                 let style = if item.depth == 0 {
                     Style::default()
                         .fg(Color::Cyan)
@@ -575,7 +649,7 @@ impl App {
 
                 Line::from(vec![
                     Span::raw(indent),
-                    Span::styled(marker.to_string(), Style::default().fg(Color::Yellow)),
+                    Span::styled(marker, Style::default().fg(Color::Yellow)),
                     Span::raw(" "),
                     Span::styled(item.title.clone(), style),
                 ])
@@ -705,13 +779,11 @@ impl App {
                 Span::raw(self.status_message.clone()),
             ]),
             Line::from(format!(
-                "Selected: {}   panes: {}% / {}%   min {}   depth {}   sort {}",
+                "Selected: {}   panes: {}% / {}%   min {}   lazy recursion on   sort desc",
                 selected_title,
                 self.pane_ratio,
                 100 - self.pane_ratio,
                 format_size(bytes_to_mb(self.min_bytes)),
-                self.depth,
-                if self.sort { "on" } else { "off" }
             )),
         ];
 
@@ -829,9 +901,9 @@ pub fn scan_header(root_display: &str, c: &Chars) {
 pub fn run_app(
     targets: Vec<ScanTarget>,
     min_bytes: u64,
-    sort: bool,
-    depth: usize,
     c: &Chars,
+    tx: Sender<scanner::ScanResult>,
+    rx: Receiver<scanner::ScanResult>,
 ) -> Result<()> {
     terminal::enable_raw_mode()?;
 
@@ -839,12 +911,12 @@ pub fn run_app(
     let mut terminal = ratatui::Terminal::new(backend)?;
     terminal.clear()?;
 
-    let mut app = App::new(targets, min_bytes, sort, depth);
+    let mut app = App::new(targets, min_bytes, tx);
 
     loop {
         terminal.draw(|frame| app.render(frame, c))?;
 
-        if event::poll(Duration::from_millis(200))? {
+        if event::poll(Duration::from_millis(50))? {
             match event::read()? {
                 Event::Key(key) => {
                     if key.kind == KeyEventKind::Press {
@@ -855,6 +927,11 @@ pub fn run_app(
                 Event::Resize(_, _) => {}
                 _ => {}
             }
+        }
+
+        // Process any messages from background scanners
+        while let Ok(result) = rx.try_recv() {
+            app.handle_scan_result(result);
         }
 
         if app.should_quit {
@@ -905,6 +982,19 @@ fn drawer_marker(expandable: bool, expanded: bool, c: &Chars) -> &'static str {
         "▼"
     } else {
         "▶"
+    }
+}
+
+fn node_at_path_mut<'a>(nodes: &'a mut [DirNode], node_path: &[usize]) -> &'a mut DirNode {
+    let (head, tail) = node_path
+        .split_first()
+        .expect("node_path must contain at least one index");
+    let node = &mut nodes[*head];
+
+    if tail.is_empty() {
+        node
+    } else {
+        node_at_path_mut(&mut node.children, tail)
     }
 }
 

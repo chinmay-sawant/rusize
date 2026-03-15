@@ -9,6 +9,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::mpsc;
 use sysinfo::{Disks, System};
 
 use cli::Args;
@@ -85,12 +86,12 @@ fn main() -> anyhow::Result<()> {
                 .progress_chars(bar_chars),
         );
 
-        // Parallel tree scan via Rayon
-        let depth = args.depth;
+        // Shallow first pass: collect direct children with full recursive sizes.
+        // Deeper directory trees are materialized lazily when the user expands a node.
         let mut nodes: Vec<scanner::DirNode> = top_dirs
             .into_par_iter()
             .map(|path| {
-                let node = scanner::scan_tree(&path, 1, depth);
+                let node = scanner::scan_tree(&path, 1, 1);
                 pb.inc(1);
                 node
             })
@@ -98,10 +99,8 @@ fn main() -> anyhow::Result<()> {
 
         pb.finish_and_clear();
 
-        // Sort (recursively) if requested
-        if args.sort {
-            scanner::sort_recursive(&mut nodes);
-        }
+        // Present the heaviest folders first so the tree is immediately useful.
+        scanner::sort_recursive(&mut nodes);
 
         let total_size = nodes.iter().map(|node| node.size).sum();
         scan_targets.push(display::ScanTarget {
@@ -111,7 +110,8 @@ fn main() -> anyhow::Result<()> {
         });
     }
 
-    display::run_app(scan_targets, min_bytes, args.sort, args.depth, c)?;
+    let (tx, rx) = mpsc::channel();
+    display::run_app(scan_targets, min_bytes, c, tx, rx)?;
 
     Ok(())
 }
