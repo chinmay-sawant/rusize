@@ -16,8 +16,8 @@ pub struct Args {
     #[arg(short = 'm', long = "min-size", default_value_t = 500.0, value_name = "MB")]
     pub min_size: f64,
 
-    #[arg(short, long, default_value_t = false)]
-    pub sort: bool,
+    #[arg(long, default_value_t = false)]
+    pub no_sort: bool,
 
     #[arg(short, long, default_value_t = 10, value_name = "LEVELS")]
     pub depth: usize,
@@ -38,7 +38,7 @@ fn main() -> anyhow::Result<()> {
     rusize::run(
         args.path,
         args.min_size,
-        args.sort,
+        !args.no_sort,
         args.depth,
         args.format,
         args.output,
