@@ -11,14 +11,31 @@ It uses Rayon's work-stealing thread pool to scan directories in parallel, detec
 - **Cross-Platform**: Works correctly on Windows, macOS, and Linux.
 - **Filtering**: Easily filter folders by minimum size using the `--min-size` argument.
 
-## Installation / Building
+## Installation
 
-Make sure you have [Rust](https://www.rust-lang.org/) installed, then run:
+### 🚀 Download Pre-built Binaries (Recommended)
+You can download the latest pre-built binaries for **Windows, Linux, and macOS** from the [GitHub Releases](https://github.com/chinmay-sawant/rusize/releases) page.
+
+1. Download the archive for your system.
+2. Extract the `rusize` (or `rusize.exe`) binary.
+3. Move it to a folder in your system `PATH` (e.g., `/usr/local/bin` on Linux/macOS or a custom folder on Windows).
+
+### 🦀 Using Cargo
+If you have [Rust](https://www.rust-lang.org/) installed, you can install it directly from source:
 
 ```sh
-cargo build --release
+# Via Git
+cargo install --git https://github.com/chinmay-sawant/rusize
 ```
 
+### 🛠️ Building from Source
+If you prefer to build it manually:
+
+```sh
+git clone https://github.com/chinmay-sawant/rusize
+cd rusize
+cargo build --release
+```
 The executable will be available at `target/release/rusize`.
 
 ### Windows Build from Linux
