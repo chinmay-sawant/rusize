@@ -13,17 +13,20 @@ pub struct Args {
     #[arg(value_name = "PATH")]
     pub path: Option<String>,
 
-    #[arg(short = 'm', long = "min-size", default_value_t = 1.0, value_name = "MB")]
+    #[arg(short = 'm', long = "min-size", default_value_t = 500.0, value_name = "MB")]
     pub min_size: f64,
 
     #[arg(short, long, default_value_t = false)]
     pub sort: bool,
 
-    #[arg(short, long, default_value_t = 1, value_name = "LEVELS")]
+    #[arg(short, long, default_value_t = 10, value_name = "LEVELS")]
     pub depth: usize,
 
     #[arg(short, long, value_enum, default_value_t = ReportFormat::Csv)]
     pub format: ReportFormat,
+
+    #[arg(short, long, value_name = "OUTPUT_PATH")]
+    pub output: Option<String>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -38,5 +41,6 @@ fn main() -> anyhow::Result<()> {
         args.sort,
         args.depth,
         args.format,
+        args.output,
     )
 }

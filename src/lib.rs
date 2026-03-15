@@ -15,15 +15,14 @@ pub fn run(
     sort: bool,
     max_depth: usize,
     format: ReportFormat,
+    output: Option<String>,
 ) -> anyhow::Result<()> {
     let min_bytes = (min_size_mb * 1024.0 * 1024.0) as u64;
 
     let targets: Vec<PathBuf> = if let Some(ref p) = path {
         vec![PathBuf::from(p)]
     } else {
-        if matches!(format, ReportFormat::Text) {
-            eprintln!("Detecting system disks...");
-        }
+        println!("Detecting system disks...");
         let disks = Disks::new_with_refreshed_list();
         disks
             .iter()
@@ -40,16 +39,12 @@ pub fn run(
                 .filter(|p| p.is_dir())
                 .collect(),
             Err(e) => {
-                if matches!(format, ReportFormat::Text) {
-                    eprintln!("Could not read {}: {}", root.display(), e);
-                }
+                println!("Could not read {}: {}", root.display(), e);
                 continue;
             }
         };
 
-        if matches!(format, ReportFormat::Text) {
-            eprintln!("Scanning {}...", root.display());
-        }
+        println!("Scanning {}...", root.display());
 
         let mut nodes: Vec<models::dir_node::DirNode> = top_dirs
             .into_par_iter()
@@ -60,7 +55,15 @@ pub fn run(
             sort_recursive(&mut nodes);
         }
 
-        nodes.retain(|n| n.size >= min_bytes);
+        // Apply min_size recursively by filtering out children under min_bytes
+        fn retain_large(nodes: &mut Vec<models::dir_node::DirNode>, min_bytes: u64) {
+            nodes.retain(|n| n.size >= min_bytes);
+            for node in nodes.iter_mut() {
+                retain_large(&mut node.children, min_bytes);
+            }
+        }
+        
+        retain_large(&mut nodes, min_bytes);
 
         let target_node = models::dir_node::DirNode {
             name: root.display().to_string(),
@@ -72,7 +75,7 @@ pub fn run(
         all_nodes.push(target_node);
     }
 
-    generate_report(&all_nodes, &format)?;
+    generate_report(&all_nodes, &format, output.as_deref())?;
 
     Ok(())
 }

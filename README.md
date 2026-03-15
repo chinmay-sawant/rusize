@@ -47,10 +47,11 @@ rusize [OPTIONS] [PATH]
 ### Arguments & Options
 
 - `[PATH]`: Optional directory path to scan. If omitted, `rusize` automatically discovers and scans all system disks.
-- `-m, --min-size <MB>`: The minimum directory size to display, in megabytes (default: `1.0`).
+- `-m, --min-size <MB>`: The minimum directory size to display, in megabytes (default: `500.0`).
 - `-s, --sort`: Enable sorting of directories by size.
-- `-d, --depth <LEVELS>`: Depth of the directory tree to scan (default: `1`).
+- `-d, --depth <LEVELS>`: Depth of the directory tree to scan (default: `10`).
 - `-f, --format <FORMAT>`: Output format for the report. Options are `csv`, `json`, `text` (default: `csv`).
+- `-o, --output <OUTPUT_PATH>`: Path to save the report to. If omitted, reports are saved to `rusize_report.<format>`.
 - `-h, --help`: Print help information.
 - `-V, --version`: Print version information.
 
