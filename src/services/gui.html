@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rusize - Interactive Report</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --text: #e0e0e0;
+            --container-bg: #1e1e1e;
+            --border: #333;
+            --hover: #2c2c2c;
+            --accent: #bb86fc;
+            --accent-hover: #9965f4;
+            --size-color: #03dac6;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background-color: var(--container-bg);
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            border: 1px solid var(--border);
+        }
+
+        h1 {
+            color: var(--accent);
+            margin-top: 0;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 10px;
+        }
+
+        .tree-node {
+            margin-left: 20px;
+            border-left: 1px dashed var(--border);
+            padding-left: 10px;
+            margin-top: 5px;
+        }
+
+        .node-row {
+            display: flex;
+            align-items: center;
+            padding: 6px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .node-row:hover {
+            background-color: var(--hover);
+        }
+
+        .node-row .toggle {
+            width: 20px;
+            text-align: center;
+            font-weight: bold;
+            color: var(--accent);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .node-row .name {
+            font-weight: 500;
+            flex-grow: 1;
+            margin-left: 5px;
+        }
+
+        .node-row .size {
+            color: var(--size-color);
+            font-family: monospace;
+            margin-left: 15px;
+            min-width: 80px;
+            text-align: right;
+        }
+
+        .node-buttons {
+            display: flex;
+            gap: 8px;
+            margin-left: 15px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .node-row:hover .node-buttons {
+            opacity: 1;
+        }
+
+        button {
+            background-color: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .children {
+            display: block;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Search Bar */
+        .search-bar {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            background-color: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+        .search-bar:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .controls button {
+            background-color: var(--border);
+            padding: 8px 16px;
+        }
+
+        .controls button:hover {
+            background-color: var(--hover);
+        }
+
+        .no-children {
+            color: #666;
+            margin-left: 20px;
+            font-style: italic;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Rusize Interactive Report</h1>
+        
+        <div class="controls">
+            <button onclick="expandAll()">Expand All</button>
+            <button onclick="collapseAll()">Collapse All</button>
+        </div>
+
+        <input type="text" id="search" class="search-bar" placeholder="Search directories..." onkeyup="filterTree()">
+
+        <div id="tree-root"></div>
+    </div>
+
+    <script>
+        const treeData = "INJECT_TREE_DATA_HERE";
+        
+        // If data is missing (e.g., when viewing HTML directly without server injection)
+        if (!Array.isArray(treeData) && typeof treeData === "string" && treeData.includes("TREE_DATA")) {
+            document.getElementById('tree-root').innerHTML = "<p>Run `rusize --gui report.txt` to view your report here.</p>";
+        } else {
+            renderTree(treeData, document.getElementById('tree-root'));
+        }
+
+        function createNodeElement(node) {
+            const el = document.createElement('div');
+            el.className = 'tree-node';
+            
+            const hasChildren = node.children && node.children.length > 0;
+            
+            const row = document.createElement('div');
+            row.className = 'node-row';
+            
+            const toggle = document.createElement('div');
+            toggle.className = 'toggle';
+            toggle.textContent = hasChildren ? '▼' : '•';
+            if (!hasChildren) toggle.style.color = '#666';
+            row.appendChild(toggle);
+
+            const name = document.createElement('div');
+            name.className = 'name';
+            name.textContent = node.name;
+            row.appendChild(name);
+
+            const size = document.createElement('div');
+            size.className = 'size';
+            size.textContent = node.size_str;
+            row.appendChild(size);
+
+            const buttons = document.createElement('div');
+            buttons.className = 'node-buttons';
+            
+            const copyBtn = document.createElement('button');
+            copyBtn.innerHTML = '📋 Copy Path';
+            copyBtn.onclick = (e) => {
+                e.stopPropagation();
+                copyPath(node.path, copyBtn);
+            };
+            
+            const openBtn = document.createElement('button');
+            openBtn.innerHTML = '📁 Open';
+            openBtn.onclick = (e) => {
+                e.stopPropagation();
+                openPath(node.path);
+            };
+
+            // Only show buttons if there's a valid path
+            if (node.path && node.path.trim() !== "") {
+                buttons.appendChild(copyBtn);
+                buttons.appendChild(openBtn);
+            }
+            row.appendChild(buttons);
+
+            el.appendChild(row);
+
+            const childrenContainer = document.createElement('div');
+            childrenContainer.className = 'children';
+            el.appendChild(childrenContainer);
+
+            if (hasChildren) {
+                renderTree(node.children, childrenContainer);
+                
+                row.onclick = () => {
+                    childrenContainer.classList.toggle('hidden');
+                    toggle.textContent = childrenContainer.classList.contains('hidden') ? '▶' : '▼';
+                };
+            } else {
+                row.onclick = () => {};
+            }
+
+            return el;
+        }
+
+        function renderTree(nodes, container) {
+            container.innerHTML = '';
+            nodes.forEach(node => {
+                container.appendChild(createNodeElement(node));
+            });
+        }
+
+        function copyPath(path, btn) {
+            navigator.clipboard.writeText(path).then(() => {
+                const oldText = btn.innerHTML;
+                btn.innerHTML = '✓ Copied';
+                setTimeout(() => { btn.innerHTML = oldText; }, 1500);
+            }).catch(console.error);
+        }
+
+        function openPath(path) {
+            fetch('/open', {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: path
+            }).catch(console.error);
+        }
+
+        function expandAll() {
+            document.querySelectorAll('.children').forEach(el => {
+                el.classList.remove('hidden');
+            });
+            document.querySelectorAll('.toggle').forEach(el => {
+                if (el.textContent === '▶') el.textContent = '▼';
+            });
+        }
+
+        function collapseAll() {
+            // Keep root expanded, collapse others
+            const rootChildren = document.getElementById('tree-root').firstElementChild.querySelector('.children');
+            document.querySelectorAll('.children').forEach(el => {
+                if(el !== rootChildren) {
+                    el.classList.add('hidden');
+                }
+            });
+            document.querySelectorAll('.toggle').forEach(el => {
+                if (el.textContent === '▼') el.textContent = '▶';
+            });
+        }
+
+        function filterTree() {
+            const query = document.getElementById('search').value.toLowerCase();
+            const nodes = document.querySelectorAll('.tree-node');
+            
+            if (query.trim() === '') {
+                nodes.forEach(n => {
+                    n.style.display = '';
+                    const childrenWrap = n.querySelector('.children');
+                    if (childrenWrap) childrenWrap.classList.remove('hidden');
+                });
+                return;
+            }
+
+            nodes.forEach(node => {
+                const name = node.querySelector('.name').textContent.toLowerCase();
+                const pathMatches = name.includes(query);
+                
+                if (pathMatches) {
+                    node.style.display = '';
+                    // Reveal all parents
+                    let parent = node.parentElement;
+                    while(parent && parent.classList.contains('children')) {
+                        parent.classList.remove('hidden');
+                        parent.parentElement.style.display = '';
+                        const pt = parent.parentElement.querySelector('.toggle');
+                        if (pt && pt.textContent === '▶') pt.textContent = '▼';
+                        parent = parent.parentElement.parentElement;
+                    }
+                } else {
+                    node.style.display = 'none';
+                }
+            });
+        }
+    </script>
+</body>
+</html>
