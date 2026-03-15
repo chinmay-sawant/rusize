@@ -8,9 +8,6 @@ authors = ["Chinmay Sawant"]
 [dependencies]
 # CLI Parsing
 clap = { version = "4.5", features = ["derive"] }
-# Fullscreen terminal UI
-ratatui = "0.29"
-crossterm = "0.28"
 # Parallelism
 rayon = "1.10"
 # System Information (Disks, OS, CPU)
@@ -25,6 +22,10 @@ is-root = "0.1"
 indicatif = "0.17"
 # Enable ANSI escape codes on Windows cmd.exe / PowerShell
 enable-ansi-support = "0.2"
+# Formats
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+csv = "1.3"
 
 [profile.release]
 opt-level = 3

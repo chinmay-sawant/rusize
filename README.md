@@ -1,15 +1,14 @@
 # rusize
 
 **rusize** is a blazing-fast, multi-threaded disk space analyzer written in Rust. 
-It uses Rayon's work-stealing thread pool to scan directories in parallel, detects system disks automatically, and displays results as an interactive tree with an ASCII bar chart. 
+It uses Rayon's work-stealing thread pool to scan directories in parallel, detects system disks automatically, and outputs results in customizable reporting formats (CSV, JSON, Text).
 
 ## Features
 
 - **Blazing Fast**: Uses multi-threading (`rayon`) to scan directories in parallel.
 - **Auto-Detection**: Automatically detects target disks if no path is specified.
-- **Interactive TUI**: Fullscreen terminal UI built with `ratatui` and `crossterm`.
-- **Visual Representation**: Displays results as a tree view with proportional ASCII bar charts.
-- **Cross-Platform**: Works correctly on Linux, macOS, and Windows (cmd.exe, PowerShell, and Windows Terminal).
+- **Reporting Formats**: Output data to CSV (default), JSON, or a Text tree-based layout.
+- **Cross-Platform**: Works correctly on Windows, macOS, and Linux.
 - **Filtering**: Easily filter folders by minimum size using the `--min-size` argument.
 
 ## Installation / Building
@@ -49,21 +48,27 @@ rusize [OPTIONS] [PATH]
 
 - `[PATH]`: Optional directory path to scan. If omitted, `rusize` automatically discovers and scans all system disks.
 - `-m, --min-size <MB>`: The minimum directory size to display, in megabytes (default: `1.0`).
-- `-s, --sort`: Enable sorting of directories.
+- `-s, --sort`: Enable sorting of directories by size.
 - `-d, --depth <LEVELS>`: Depth of the directory tree to scan (default: `1`).
+- `-f, --format <FORMAT>`: Output format for the report. Options are `csv`, `json`, `text` (default: `csv`).
 - `-h, --help`: Print help information.
 - `-V, --version`: Print version information.
 
 ### Examples
 
-Scan the current directory:
+Scan the current directory, generating a CSV report (default):
 ```sh
 rusize .
 ```
 
-Scan a specific directory, showing only folders larger than 50 MB:
+Scan a specific directory showing only folders larger than 50 MB, formatted as an ASCII tree:
 ```sh
-rusize --min-size 50 /var/log
+rusize --format text --min-size 50 /var/log
+```
+
+Export scan output to a JSON file:
+```sh
+rusize --format json . > output.json
 ```
 
 ## License
