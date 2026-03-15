@@ -186,7 +186,7 @@
             renderTree(treeData, document.getElementById('tree-root'));
         }
 
-        function createNodeElement(node) {
+        function createNodeElement(node, depth = 0) {
             const el = document.createElement('div');
             el.className = 'tree-node';
             
@@ -239,10 +239,16 @@
 
             const childrenContainer = document.createElement('div');
             childrenContainer.className = 'children';
+
+            if (hasChildren) {
+                childrenContainer.classList.add('hidden');
+                toggle.textContent = '▶';
+            }
+
             el.appendChild(childrenContainer);
 
             if (hasChildren) {
-                renderTree(node.children, childrenContainer);
+                renderTree(node.children, childrenContainer, depth + 1);
                 
                 row.onclick = () => {
                     childrenContainer.classList.toggle('hidden');
@@ -255,10 +261,10 @@
             return el;
         }
 
-        function renderTree(nodes, container) {
+        function renderTree(nodes, container, depth = 0) {
             container.innerHTML = '';
             nodes.forEach(node => {
-                container.appendChild(createNodeElement(node));
+                container.appendChild(createNodeElement(node, depth));
             });
         }
 
@@ -283,20 +289,20 @@
                 el.classList.remove('hidden');
             });
             document.querySelectorAll('.toggle').forEach(el => {
-                if (el.textContent === '▶') el.textContent = '▼';
+                if (el.closest('.tree-node')?.querySelector(':scope > .children')) {
+                    el.textContent = '▼';
+                }
             });
         }
 
         function collapseAll() {
-            // Keep root expanded, collapse others
-            const rootChildren = document.getElementById('tree-root').firstElementChild.querySelector('.children');
             document.querySelectorAll('.children').forEach(el => {
-                if(el !== rootChildren) {
-                    el.classList.add('hidden');
-                }
+                el.classList.add('hidden');
             });
             document.querySelectorAll('.toggle').forEach(el => {
-                if (el.textContent === '▼') el.textContent = '▶';
+                if (el.closest('.tree-node')?.querySelector(':scope > .children')) {
+                    el.textContent = '▶';
+                }
             });
         }
 
@@ -307,8 +313,6 @@
             if (query.trim() === '') {
                 nodes.forEach(n => {
                     n.style.display = '';
-                    const childrenWrap = n.querySelector('.children');
-                    if (childrenWrap) childrenWrap.classList.remove('hidden');
                 });
                 return;
             }
